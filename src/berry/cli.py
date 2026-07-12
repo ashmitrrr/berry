@@ -1,5 +1,6 @@
 """berry CLI - `berry status`, `berry feed`, `berry remind ...`."""
 
+import time
 from pathlib import Path
 
 import click
@@ -7,7 +8,7 @@ from rich.console import Console
 
 from berry import reminders
 from berry.daemon import run_forever
-from berry.render import render_sprite
+from berry.render import mood_frames, render_sprite
 from berry.state import feed as feed_state
 from berry.state import load_state, mood, save_state, touch
 from berry.state import apply_decay as decay_state
@@ -24,21 +25,22 @@ MOOD_FALLBACK_EMOJI = {
 }
 
 
-def _sprite_path(species: str, pet_mood: str) -> Path:
-    return ASSETS_DIR / species / f"{pet_mood}.png"
+def _first_frame_path(species: str, pet_mood: str) -> Path | None:
+    """Return path to frame_01.png for the mood folder, or None."""
+    frames = mood_frames(ASSETS_DIR, species, pet_mood)
+    return frames[0] if frames else None
 
 
 def _render(species: str, pet_mood: str) -> None:
-    """Render the pet's sprite, or a text placeholder if no PNG exists yet."""
-    path = _sprite_path(species, pet_mood)
-    if path.exists():
-        console.print(render_sprite(path))
+    """Render the pet's first frame, or a text placeholder if no frames exist."""
+    frame = _first_frame_path(species, pet_mood)
+    if frame:
+        console.print(render_sprite(frame))
     else:
         placeholder = MOOD_FALLBACK_EMOJI.get(pet_mood, "( =^..^= )")
         console.print(f"  {placeholder}")
         console.print(
-            f"  [dim](no {species}/{pet_mood}.png yet — drop sprites into "
-            f"berry/assets/{species}/)[/dim]"
+            f"  [dim](no frames for {species}/{pet_mood} yet)[/dim]"
         )
 
 
@@ -127,6 +129,52 @@ def daemon() -> None:
     """
     console.print("[dim]berry daemon running — checking reminders every 30s. Ctrl+C to stop.[/dim]")
     run_forever()
+
+
+@main.command()
+@click.option("--fps", default=9, show_default=True, help="Frames per second.")
+def watch(fps: int) -> None:
+    """Watch your pet animate live. Ctrl+C to stop."""
+    from rich.live import Live
+    from rich.text import Text
+
+    frame_delay = 1.0 / max(1, fps)
+
+    try:
+        with Live(console=console, refresh_per_second=fps, screen=False) as live:
+            frame_index = 0
+            current_mood = None
+            frames: list[Path] = []
+
+            while True:
+                state = load_state()
+                state = decay_state(state)
+                save_state(state)
+                new_mood = mood(state)
+
+                if new_mood != current_mood:
+                    current_mood = new_mood
+                    frames = mood_frames(ASSETS_DIR, state.species, current_mood)
+                    frame_index = 0
+
+                if frames:
+                    frame_path = frames[frame_index % len(frames)]
+                    rendered = render_sprite(frame_path)
+                    status_line = Text(
+                        f"\n{state.name} — {current_mood}, hunger {int(state.hunger)}/100"
+                        "  [Ctrl+C to stop]",
+                        style="dim",
+                    )
+                    rendered.append_text(status_line)
+                    live.update(rendered)
+                    frame_index += 1
+                else:
+                    placeholder = MOOD_FALLBACK_EMOJI.get(current_mood, "( =^..^= )")
+                    live.update(Text(f"  {placeholder}\n  [dim](no frames)[/dim]"))
+
+                time.sleep(frame_delay)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

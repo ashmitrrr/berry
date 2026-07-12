@@ -17,6 +17,15 @@ UPPER_HALF_BLOCK = "▀"
 LOWER_HALF_BLOCK = "▄"
 
 
+def mood_frames(assets_dir: Path, species: str, pet_mood: str) -> list[Path]:
+    """Return sorted list of frame PNGs for a mood, or [] if none exist."""
+    mood_dir = assets_dir / species / pet_mood
+    if not mood_dir.is_dir():
+        return []
+    frames = sorted(mood_dir.glob("frame_*.png"))
+    return frames
+
+
 def _rgb(pixel: tuple[int, int, int, int]) -> str:
     r, g, b, _a = pixel
     return f"rgb({r},{g},{b})"
