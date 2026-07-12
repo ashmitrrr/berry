@@ -27,8 +27,23 @@ feels like your pet talking to you, not your OS.
 
 ```sh
 brew tap ashmitrrr/berry
+brew trust ashmitrrr/berry
 brew install berry
+brew services start ashmitrrr/berry/berry
 ```
+
+> [!NOTE]
+> `brew trust` is a one-time confirmation Homebrew requires for any
+> third-party tap (not specific to berry) — it'll prompt you the first
+> time you install from a tap that isn't `homebrew-core`.
+>
+> The first install builds a couple of Python C extensions from source
+> (Pillow, PyObjC), so it can take a few minutes. That's normal — later
+> updates will be much faster.
+>
+> `brew services start` is what actually launches the menu bar app and
+> keeps it running across reboots. If you'd rather run it manually
+> instead, skip that line and use `berry menubar` directly.
 
 ### Manual
 
