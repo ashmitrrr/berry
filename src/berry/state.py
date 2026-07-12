@@ -25,7 +25,7 @@ _IDLE_CACHE_TTL = 30.0
 @dataclass
 class PetState:
     species: str = "cat"
-    name: str = "Fizz"
+    name: str = "berry"
     hunger: float = 100.0
     last_fed: float = 0.0
     last_interaction: float = 0.0
