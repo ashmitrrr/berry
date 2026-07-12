@@ -138,6 +138,9 @@ def watch(fps: int) -> None:
     from rich.live import Live
     from rich.text import Text
 
+    # animation redraws at `fps`, but hunger/mood only meaningfully
+    # change over minutes — reload state once a second, not every frame.
+    STATE_CHECK_INTERVAL = 1.0
     frame_delay = 1.0 / max(1, fps)
 
     try:
@@ -145,17 +148,22 @@ def watch(fps: int) -> None:
             frame_index = 0
             current_mood = None
             frames: list[Path] = []
+            state = None
+            last_state_check = 0.0
 
             while True:
-                state = load_state()
-                state = decay_state(state)
-                save_state(state)
-                new_mood = mood(state)
+                now = time.monotonic()
+                if state is None or now - last_state_check >= STATE_CHECK_INTERVAL:
+                    state = load_state()
+                    state = decay_state(state)
+                    save_state(state)
+                    last_state_check = now
 
-                if new_mood != current_mood:
-                    current_mood = new_mood
-                    frames = mood_frames(ASSETS_DIR, state.species, current_mood)
-                    frame_index = 0
+                    new_mood = mood(state)
+                    if new_mood != current_mood:
+                        current_mood = new_mood
+                        frames = mood_frames(ASSETS_DIR, state.species, current_mood)
+                        frame_index = 0
 
                 if frames:
                     frame_path = frames[frame_index % len(frames)]
