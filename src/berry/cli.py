@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from berry import reminders
+from berry import __version__, reminders
 from berry.daemon import run_forever
 from berry.render import menubar_frame, mood_frames, render_sprite
 from berry.state import feed as feed_state
@@ -55,6 +55,7 @@ def _load_current_state():
 
 
 @click.group()
+@click.version_option(__version__, prog_name="berry")
 def main() -> None:
     """berry - a cute terminal pet that reminds you of things."""
 
