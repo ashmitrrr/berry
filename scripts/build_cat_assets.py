@@ -74,10 +74,51 @@ def slice_sheet(img: Image.Image, n_frames: int) -> list[Image.Image]:
     return frames
 
 
-def main() -> None:
-    # Track per-mood frame counters so sleeping sheets append sequentially
-    mood_counters: dict[str, int] = {}
+MENUBAR_PAD = 2   # transparent-free margin kept around the cropped content
 
+
+def _union_bbox(frames: list[Image.Image]) -> tuple[int, int, int, int]:
+    """Return the union of all non-transparent bounding boxes in frames."""
+    bboxes = [f.getbbox() for f in frames]
+    bboxes = [b for b in bboxes if b is not None]
+    if not bboxes:
+        return (0, 0, FRAME_W, FRAME_H)
+    return (
+        min(b[0] for b in bboxes),
+        min(b[1] for b in bboxes),
+        max(b[2] for b in bboxes),
+        max(b[3] for b in bboxes),
+    )
+
+
+def main() -> None:
+    # Phase 1 — accumulate all decoded frames per mood so we can compute a
+    # shared union bounding box.  A per-mood box (not per-frame) keeps the
+    # cat's apparent size consistent across animation frames, preventing jitter.
+    mood_all_frames: dict[str, list[Image.Image]] = {}
+    for filename, n_frames, mood_name in SHEETS:
+        src = RAW / filename
+        if not src.exists():
+            continue
+        frames = slice_sheet(recolor_image(Image.open(src)), n_frames)
+        mood_all_frames.setdefault(mood_name, []).extend(frames)
+
+    # Padded union crop box per mood.
+    mood_crop: dict[str, tuple[int, int, int, int]] = {}
+    for mood_name, frames in mood_all_frames.items():
+        ux, uy, uw, uh = _union_bbox(frames)
+        mood_crop[mood_name] = (
+            max(0,      ux - MENUBAR_PAD),
+            max(0,      uy - MENUBAR_PAD),
+            min(FRAME_W, uw + MENUBAR_PAD),
+            min(FRAME_H, uh + MENUBAR_PAD),
+        )
+
+    # Phase 2 — write frames.  Full-size frame_NN.png is unchanged (used by
+    # status / feed / watch / terminal renderer).  Menubar variants crop to the
+    # shared per-mood bbox before nearest-neighbor scaling so the cat fills the
+    # icon canvas instead of being a tiny blob in mostly-empty space.
+    mood_counters: dict[str, int] = {}
     for filename, n_frames, mood_name in SHEETS:
         src = RAW / filename
         if not src.exists():
@@ -87,23 +128,25 @@ def main() -> None:
         mood_dir = OUT / mood_name
         mood_dir.mkdir(parents=True, exist_ok=True)
 
-        img = Image.open(src)
-        recolored = recolor_image(img)
-        frames = slice_sheet(recolored, n_frames)
+        frames = slice_sheet(recolor_image(Image.open(src)), n_frames)
+        crop_box = mood_crop[mood_name]
+        crop_w = crop_box[2] - crop_box[0]
+        crop_h = crop_box[3] - crop_box[1]
 
         start = mood_counters.get(mood_name, 0)
+        if start == 0:
+            fill = round(crop_w * crop_h / (FRAME_W * FRAME_H) * 100)
+            print(f"  [{mood_name}] menubar crop {crop_box}  {crop_w}×{crop_h}px  ({fill}% of canvas)")
+
         for i, frame in enumerate(frames):
             idx = start + i + 1
             out_path = mood_dir / f"frame_{idx:02d}.png"
             frame.save(out_path)
             print(f"  wrote {out_path.relative_to(OUT.parent.parent)}")
 
-            # Menubar variants: nearest-neighbor so pixel-art edges stay crisp.
-            # 20×20 matches rumps's 20pt logical size at 1x; 40×40 fills the
-            # exact 40×40 physical pixel budget on a 2x Retina display without
-            # any additional interpolation by macOS.
+            cropped = frame.crop(crop_box)
             for size, suffix in [(20, "_menubar"), (40, "_menubar@2x")]:
-                frame.resize((size, size), Image.NEAREST).save(
+                cropped.resize((size, size), Image.NEAREST).save(
                     mood_dir / f"frame_{idx:02d}{suffix}.png"
                 )
 
