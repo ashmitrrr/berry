@@ -8,9 +8,13 @@ what lets reminders reach you even if the terminal isn't open.
 
 import subprocess
 import time
+from pathlib import Path
 
-from berry import reminders
+from berry import popup, reminders
+from berry.render import mood_frames
 from berry.state import load_state
+
+ASSETS_DIR = Path(__file__).parent / "assets"
 
 CHECK_INTERVAL_SECONDS = 30
 
@@ -50,12 +54,14 @@ def check_once() -> int:
     """
     state = load_state()
     emoji = PET_LABEL.get(state.species, "🐾")
+    alert_frames = mood_frames(ASSETS_DIR, state.species, "alert")
+    sprite = alert_frames[0] if alert_frames else None
     due = reminders.due_reminders()
     for r in due:
-        notify_macos(
-            title=f"{emoji} {state.name}",
-            message=r["text"],
-        )
+        title = f"{emoji} {state.name}"
+        message = r["text"]
+        if not popup.show_popup(title, message, sprite):
+            notify_macos(title=title, message=message)
         reminders.mark_fired(r["id"])
     return len(due)
 
