@@ -18,12 +18,17 @@ LOWER_HALF_BLOCK = "▄"
 
 
 def mood_frames(assets_dir: Path, species: str, pet_mood: str) -> list[Path]:
-    """Return sorted list of frame PNGs for a mood, or [] if none exist."""
+    """Return sorted list of base frame PNGs for a mood, or [] if none exist."""
     mood_dir = assets_dir / species / pet_mood
     if not mood_dir.is_dir():
         return []
-    frames = sorted(mood_dir.glob("frame_*.png"))
-    return frames
+    return sorted(f for f in mood_dir.glob("frame_*.png") if "_menubar" not in f.stem)
+
+
+def menubar_frame(frame_path: Path) -> Path:
+    """Return the 40×40 @2x menubar sibling of a frame, or frame_path if absent."""
+    candidate = frame_path.parent / (frame_path.stem + "_menubar@2x.png")
+    return candidate if candidate.exists() else frame_path
 
 
 def _rgb(pixel: tuple[int, int, int, int]) -> str:

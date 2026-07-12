@@ -98,6 +98,15 @@ def main() -> None:
             frame.save(out_path)
             print(f"  wrote {out_path.relative_to(OUT.parent.parent)}")
 
+            # Menubar variants: nearest-neighbor so pixel-art edges stay crisp.
+            # 20×20 matches rumps's 20pt logical size at 1x; 40×40 fills the
+            # exact 40×40 physical pixel budget on a 2x Retina display without
+            # any additional interpolation by macOS.
+            for size, suffix in [(20, "_menubar"), (40, "_menubar@2x")]:
+                frame.resize((size, size), Image.NEAREST).save(
+                    mood_dir / f"frame_{idx:02d}{suffix}.png"
+                )
+
         mood_counters[mood_name] = start + n_frames
 
     print("\nDone.")

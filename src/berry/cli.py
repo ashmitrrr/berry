@@ -9,7 +9,7 @@ from rich.console import Console
 
 from berry import reminders
 from berry.daemon import run_forever
-from berry.render import mood_frames, render_sprite
+from berry.render import menubar_frame, mood_frames, render_sprite
 from berry.state import feed as feed_state
 from berry.state import nap as nap_state
 from berry.state import wake as wake_state
@@ -290,6 +290,7 @@ def menubar(fps: int) -> None:
     # Capture module-level names for the closure so the nested class
     # doesn't need to qualify every reference.
     _mood_frames = mood_frames
+    _menubar_frame = menubar_frame
     _load_state = load_state
     _decay_state = decay_state
     _save_state = save_state
@@ -310,7 +311,7 @@ def menubar(fps: int) -> None:
             self._frames = _mood_frames(_assets, state.species, self._current_mood)
             self._frame_index = 0
 
-            initial_icon = str(self._frames[0]) if self._frames else None
+            initial_icon = str(_menubar_frame(self._frames[0])) if self._frames else None
             super().__init__(
                 name="berry",
                 icon=initial_icon,
@@ -345,7 +346,8 @@ def menubar(fps: int) -> None:
         def _next_frame(self, _sender):
             if not self._frames:
                 return
-            self.icon = str(self._frames[self._frame_index % len(self._frames)])
+            frame = self._frames[self._frame_index % len(self._frames)]
+            self.icon = str(_menubar_frame(frame))
             # Re-apply after each swap — NSImage objects reset template state
             # when assigned, so setting it once in __init__ is not enough.
             self.template = False
