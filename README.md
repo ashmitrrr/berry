@@ -4,8 +4,7 @@ berry is a tiny pixel-art cat that lives in your terminal and your menu bar.
 It'll do this as simply as it can: no accounts, no server, no Electron —
 just a `.venv` and your Mac.
 
-Feed it, watch it animate, and it'll remind you about things — showing up
-as a proper little pet notification, not a generic system banner.
+Feed it, watch it animate, and it'll remind you about things.
 
 ![berry](src/berry/assets/berry.png)
 
