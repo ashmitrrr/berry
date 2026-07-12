@@ -11,6 +11,9 @@ dependencies = [
     "rumps>=0.4.0; sys_platform=='darwin'",
 ]
 
+[project.optional-dependencies]
+dev = ["ruff>=0.6", "pytest>=8.0"]
+
 [project.scripts]
 berry = "berry.cli:main"
 
@@ -23,3 +26,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 berry = ["assets/**/*.png"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

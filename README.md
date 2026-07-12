@@ -1,9 +1,11 @@
 # berry
 
+[![CI](https://github.com/ashmitrrr/berry/actions/workflows/ci.yml/badge.svg)](https://github.com/ashmitrrr/berry/actions/workflows/ci.yml)
+
 ![berry](src/berry/assets/berry.png)
 
 berry is a tiny pixel-art cat that lives in your terminal and your menu bar.
-It'll do this as simply as it can. It doesnt need any accounts, no server, no Electron, 
+It'll do this as simply as it can: no accounts, no server, no Electron --
 just a `.venv` and your Mac.
 
 Feed it, watch it animate, and it'll remind you about things.
