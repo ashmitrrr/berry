@@ -1,0 +1,23 @@
+[project]
+name = "berry"
+version = "0.1.0"
+description = "A cute pixel-art pet that lives in your terminal and reminds you of things."
+requires-python = ">=3.10"
+dependencies = [
+    "rich>=13.0",
+    "click>=8.1",
+    "pillow>=10.0",
+]
+
+[project.scripts]
+berry = "berry.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+berry = ["assets/**/*.png"]
