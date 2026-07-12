@@ -29,6 +29,7 @@ class PetState:
     hunger: float = 100.0
     last_fed: float = 0.0
     last_interaction: float = 0.0
+    manual_sleep: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -102,7 +103,24 @@ def touch(state: PetState) -> PetState:
     return state
 
 
+def nap(state: PetState) -> PetState:
+    """Set the manual sleep flag so mood() returns 'sleeping' regardless of hunger/CPU."""
+    state.manual_sleep = True
+    save_state(state)
+    return state
+
+
+def wake(state: PetState) -> PetState:
+    """Clear the manual sleep flag and reset the idle timer."""
+    state.manual_sleep = False
+    state.last_interaction = time.time()
+    save_state(state)
+    return state
+
+
 def mood(state: PetState, cpu_percent: float | None = None) -> str:
+    if state.manual_sleep:
+        return "sleeping"
     hours_idle = (time.time() - state.last_interaction) / 3600
     if hours_idle > SLEEP_AFTER_HOURS_IDLE:
         return "sleeping"

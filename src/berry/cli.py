@@ -1,5 +1,6 @@
 """berry CLI - `berry status`, `berry feed`, `berry remind ...`."""
 
+import subprocess
 import time
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from berry import reminders
 from berry.daemon import run_forever
 from berry.render import mood_frames, render_sprite
 from berry.state import feed as feed_state
+from berry.state import nap as nap_state
+from berry.state import wake as wake_state
 from berry.state import load_state, mood, save_state, touch
 from berry.state import apply_decay as decay_state
 
@@ -86,6 +89,36 @@ def feed() -> None:
     state = feed_state(state)
     _render(state.species, mood(state))
     console.print(f"\n[green]{state.name} is full and happy![/green]")
+
+
+@main.command()
+def nap() -> None:
+    """Put your pet to sleep and send the Mac to sleep."""
+    state = _load_current_state()
+    state = nap_state(state)
+    _render(state.species, "sleeping")
+    console.print(f"\n[dim]{state.name} curls up... goodnight.[/dim]")
+    try:
+        subprocess.run(["pmset", "sleepnow"], check=False)
+    except (FileNotFoundError, OSError):
+        console.print(
+            "[yellow](pmset not available — pet is sleeping but Mac stays awake)[/yellow]"
+        )
+
+
+@main.command()
+def wake() -> None:
+    """Wake your pet up from a manual nap.
+
+    Only needed if you used ``berry nap`` without ``berry menubar``
+    running — the menu bar app clears this automatically when it
+    detects the Mac waking up. This is the manual fallback.
+    """
+    state = load_state()
+    state = wake_state(state)
+    current_mood = mood(state)
+    _render(state.species, current_mood)
+    console.print(f"\n[green]{state.name} stretches and wakes up![/green]")
 
 
 @main.command()
@@ -235,6 +268,25 @@ def menubar(fps: int) -> None:
         )
     import psutil
 
+    # Try to set up the PyObjC wake-notification class once per invocation.
+    # Wrapping everything in except Exception means non-macOS / missing PyObjC
+    # simply leaves these as None and the observer setup in __init__ is skipped.
+    _WakeObserver = None
+    _wake_nc = None
+    try:
+        from Foundation import NSObject as _NSObject
+        from AppKit import NSWorkspace as _NSWorkspace
+
+        class _WakeObserver(_NSObject):
+            def handleWake_(self, _notification):
+                cb = getattr(self, "_berry_callback", None)
+                if cb is not None:
+                    cb()
+
+        _wake_nc = _NSWorkspace.sharedWorkspace().notificationCenter()
+    except Exception:
+        pass
+
     # Capture module-level names for the closure so the nested class
     # doesn't need to qualify every reference.
     _mood_frames = mood_frames
@@ -243,6 +295,7 @@ def menubar(fps: int) -> None:
     _save_state = save_state
     _mood = mood
     _feed_state = feed_state
+    _wake_state = wake_state
     _assets = ASSETS_DIR
     _psutil = psutil
 
@@ -271,6 +324,23 @@ def menubar(fps: int) -> None:
 
             rumps.Timer(self._next_frame, 1.0 / max(1, fps)).start()
             rumps.Timer(self._sync_state, 4.0).start()
+
+            self._wake_observer = None
+            if _WakeObserver is not None and _wake_nc is not None:
+                try:
+                    obs = _WakeObserver.alloc().init()
+                    obs._berry_callback = self._on_wake
+                    self._wake_observer = obs
+                    _wake_nc.addObserver_selector_name_object_(
+                        obs, "handleWake:", "NSWorkspaceDidWakeNotification", None
+                    )
+                except Exception:
+                    pass
+
+        def _on_wake(self):
+            state = _load_state()
+            _wake_state(state)   # clears manual_sleep, resets last_interaction, saves
+            self._sync_state(None)
 
         def _next_frame(self, _sender):
             if not self._frames:
