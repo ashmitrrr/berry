@@ -122,13 +122,51 @@ def list_reminders() -> None:
 
 @main.command()
 def daemon() -> None:
-    """Run the background reminder checker in the foreground (for testing).
+    """Run the reminder checker in the foreground (debug/manual fallback).
 
-    In production this is what a launchd agent runs continuously so
-    reminders fire as native notifications even when no terminal is open.
+    The normal background path is ``berry install``, which registers a
+    launchd agent that wakes once per minute without a terminal open.
+    Use this only for debugging or on non-macOS systems.
     """
     console.print("[dim]berry daemon running — checking reminders every 30s. Ctrl+C to stop.[/dim]")
     run_forever()
+
+
+@main.command(name="_check-reminders", hidden=True)
+def check_reminders() -> None:
+    """One-shot reminder check — invoked by launchd every 60 s."""
+    from berry.daemon import check_once
+    check_once()
+
+
+@main.command()
+def install() -> None:
+    """Install berry as a macOS background service (launchd agent)."""
+    from berry import launchd
+    ok, msg = launchd.install()
+    if ok:
+        console.print("[green]berry installed as a background service.[/green]")
+        console.print(f"[dim]Plist: {msg}[/dim]")
+        console.print("[dim]Reminders will be checked every 60 seconds automatically.[/dim]")
+    else:
+        console.print(f"[red]Install failed: {msg}[/red]")
+        raise SystemExit(1)
+
+
+@main.command()
+def uninstall() -> None:
+    """Remove berry from macOS background services (launchd agent)."""
+    from berry import launchd
+    ok, msg = launchd.uninstall()
+    if ok:
+        console.print("[green]berry background service removed.[/green]")
+        console.print(f"[dim]Removed: {msg}[/dim]")
+    else:
+        if msg == "not installed":
+            console.print("[yellow]berry is not currently installed as a background service.[/yellow]")
+        else:
+            console.print(f"[red]Uninstall failed: {msg}[/red]")
+            raise SystemExit(1)
 
 
 @main.command()
@@ -183,6 +221,99 @@ def watch(fps: int) -> None:
                 time.sleep(frame_delay)
     except KeyboardInterrupt:
         pass
+
+
+@main.command()
+@click.option("--fps", default=4, show_default=True, help="Icon animation frames per second.")
+def menubar(fps: int) -> None:
+    """Run berry as an animated macOS menu bar app."""
+    try:
+        import rumps
+    except ImportError:
+        raise click.ClickException(
+            "rumps is required for the menu bar: pip install rumps"
+        )
+    import psutil
+
+    # Capture module-level names for the closure so the nested class
+    # doesn't need to qualify every reference.
+    _mood_frames = mood_frames
+    _load_state = load_state
+    _decay_state = decay_state
+    _save_state = save_state
+    _mood = mood
+    _feed_state = feed_state
+    _assets = ASSETS_DIR
+    _psutil = psutil
+
+    class BerryMenuBar(rumps.App):
+        def __init__(self):
+            state = _load_state()
+            state = _decay_state(state)
+            _save_state(state)
+            self._state = state
+            cpu = _psutil.cpu_percent(interval=None)
+            self._current_mood = _mood(state, cpu_percent=cpu)
+            self._frames = _mood_frames(_assets, state.species, self._current_mood)
+            self._frame_index = 0
+
+            initial_icon = str(self._frames[0]) if self._frames else None
+            super().__init__(
+                name="berry",
+                icon=initial_icon,
+                template=False,
+                menu=["Feed", "Status"],
+            )
+            # Explicitly disable template mode so macOS renders full color
+            # instead of flattening the pixel art to a black silhouette.
+            if initial_icon:
+                self.template = False
+
+            rumps.Timer(self._next_frame, 1.0 / max(1, fps)).start()
+            rumps.Timer(self._sync_state, 4.0).start()
+
+        def _next_frame(self, _sender):
+            if not self._frames:
+                return
+            self.icon = str(self._frames[self._frame_index % len(self._frames)])
+            # Re-apply after each swap — NSImage objects reset template state
+            # when assigned, so setting it once in __init__ is not enough.
+            self.template = False
+            self._frame_index += 1
+
+        def _sync_state(self, _sender):
+            state = _load_state()
+            state = _decay_state(state)
+            _save_state(state)
+            self._state = state
+            cpu = _psutil.cpu_percent(interval=None)
+            new_mood = _mood(state, cpu_percent=cpu)
+            if new_mood != self._current_mood:
+                self._current_mood = new_mood
+                self._frames = _mood_frames(_assets, state.species, new_mood)
+                self._frame_index = 0
+
+        @rumps.clicked("Feed")
+        def on_feed(self, _sender):
+            self._state = _feed_state(self._state)
+            cpu = _psutil.cpu_percent(interval=None)
+            new_mood = _mood(self._state, cpu_percent=cpu)
+            if new_mood != self._current_mood:
+                self._current_mood = new_mood
+                self._frames = _mood_frames(_assets, self._state.species, new_mood)
+                self._frame_index = 0
+
+        @rumps.clicked("Status")
+        def on_status(self, _sender):
+            cpu = _psutil.cpu_percent(interval=None)
+            current_mood = _mood(self._state, cpu_percent=cpu)
+            rumps.notification(
+                title=f"{self._state.name} the {self._state.species}",
+                subtitle=f"Mood: {current_mood}",
+                message=f"Hunger: {int(self._state.hunger)}/100",
+            )
+
+    BerryMenuBar().run()
 
 
 if __name__ == "__main__":

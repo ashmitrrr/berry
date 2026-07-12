@@ -30,6 +30,7 @@ SHEETS = [
     ("Cat-1-Sleeping1.png",    1, "sleeping"),
     ("Cat-1-Sleeping2.png",    1, "sleeping"),   # appended as frame 2
     ("Cat-1-Itch.png",         2, "alert"),
+    ("Cat-1-Run.png",          8, "running"),
 ]
 
 FRAME_W = 50

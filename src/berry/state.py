@@ -1,6 +1,8 @@
 """Pet state: hunger, mood, and persistence to ~/.berry/state.json."""
 
 import json
+import re
+import subprocess
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -11,6 +13,13 @@ STATE_FILE = STATE_DIR / "state.json"
 MAX_HUNGER = 100.0
 HUNGER_DECAY_PER_HOUR = 8.0
 SLEEP_AFTER_HOURS_IDLE = 6.0
+
+_IDLE_THRESHOLD_SECS = 300   # 5 minutes of system HID idle
+_IDLE_DECAY_MULTIPLIER = 1.5  # hunger drains 50% faster when nobody's at the keyboard
+
+# Cache ioreg result for 30s — it's a subprocess call we don't want at 1 Hz.
+_idle_cache: tuple[float, float | None] = (0.0, None)
+_IDLE_CACHE_TTL = 30.0
 
 
 @dataclass
@@ -27,6 +36,27 @@ class PetState:
 
 def _ensure_dir() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _idle_seconds_macos() -> float | None:
+    """Return system HID idle time in seconds, or None on any failure."""
+    global _idle_cache
+    now = time.time()
+    if now - _idle_cache[0] < _IDLE_CACHE_TTL:
+        return _idle_cache[1]
+    result = None
+    try:
+        proc = subprocess.run(
+            ["ioreg", "-c", "IOHIDSystem"],
+            capture_output=True, text=True, timeout=2,
+        )
+        m = re.search(r'"HIDIdleTime"\s*=\s*(\d+)', proc.stdout)
+        if m:
+            result = int(m.group(1)) / 1_000_000_000  # nanoseconds → seconds
+    except Exception:
+        pass
+    _idle_cache = (now, result)
+    return result
 
 
 def load_state() -> PetState:
@@ -46,9 +76,13 @@ def save_state(state: PetState) -> None:
 
 
 def apply_decay(state: PetState) -> PetState:
-    """Recompute hunger based on time elapsed since last feeding."""
+    """Recompute hunger; applies 1.5× rate when HID idle > 5 min."""
     hours_elapsed = (time.time() - state.last_fed) / 3600
-    decayed = max(0.0, MAX_HUNGER - hours_elapsed * HUNGER_DECAY_PER_HOUR)
+    rate = HUNGER_DECAY_PER_HOUR
+    idle = _idle_seconds_macos()
+    if idle is not None and idle > _IDLE_THRESHOLD_SECS:
+        rate *= _IDLE_DECAY_MULTIPLIER
+    decayed = max(0.0, MAX_HUNGER - hours_elapsed * rate)
     state.hunger = min(state.hunger, decayed)
     return state
 
@@ -68,12 +102,14 @@ def touch(state: PetState) -> PetState:
     return state
 
 
-def mood(state: PetState) -> str:
+def mood(state: PetState, cpu_percent: float | None = None) -> str:
     hours_idle = (time.time() - state.last_interaction) / 3600
     if hours_idle > SLEEP_AFTER_HOURS_IDLE:
         return "sleeping"
     if state.hunger < 20:
         return "hungry"
+    if cpu_percent is not None and cpu_percent > 50:
+        return "running"
     if state.hunger > 70:
         return "happy"
     return "idle"

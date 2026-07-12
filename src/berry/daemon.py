@@ -61,7 +61,13 @@ def check_once() -> int:
 
 
 def run_forever() -> None:
-    """Foreground polling loop. This is what the launchd agent runs."""
+    """Foreground polling loop — manual/debug fallback only.
+
+    The recommended path is ``berry install``, which registers a launchd
+    agent that invokes ``berry _check-reminders`` once every 60 s without
+    keeping a terminal open. Use this command when debugging notification
+    behaviour or when launchd is unavailable.
+    """
     while True:
         check_once()
         time.sleep(CHECK_INTERVAL_SECONDS)
