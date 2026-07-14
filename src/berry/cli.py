@@ -259,7 +259,13 @@ def watch(fps: int) -> None:
 
 @main.command()
 @click.option("--fps", default=4, show_default=True, help="Icon animation frames per second.")
-def menubar(fps: int) -> None:
+@click.option(
+    "--companion/--no-companion",
+    default=True,
+    show_default=True,
+    help="Also show berry as a floating companion on your desktop.",
+)
+def menubar(fps: int, companion: bool) -> None:
     """Run berry as an animated macOS menu bar app."""
     try:
         import rumps
@@ -268,6 +274,11 @@ def menubar(fps: int) -> None:
             "rumps is required for the menu bar: pip install rumps"
         )
     import psutil
+
+    from berry.ai import backend_from_config
+    from berry.checkin import due_for_checkin, show_checkin
+    from berry.companion import create_companion
+    from berry.config import load_config
 
     # Try to set up the PyObjC wake-notification class once per invocation.
     # Wrapping everything in except Exception means non-macOS / missing PyObjC
@@ -300,6 +311,12 @@ def menubar(fps: int) -> None:
     _wake_state = wake_state
     _assets = ASSETS_DIR
     _psutil = psutil
+    _create_companion = create_companion
+    _backend_from_config = backend_from_config
+    _due_for_checkin = due_for_checkin
+    _show_checkin = show_checkin
+    _load_config = load_config
+    _first_frame = _first_frame_path
 
     class BerryMenuBar(rumps.App):
         def __init__(self):
@@ -324,6 +341,12 @@ def menubar(fps: int) -> None:
             if initial_icon:
                 self.template = False
 
+            # Floating desktop companion — shows the same animation at
+            # full sprite size. None if disabled or the panel can't be
+            # created (no display, etc.); the icon works without it.
+            self._companion = _create_companion() if companion else None
+            self._last_checkin = 0.0
+
             rumps.Timer(self._next_frame, 1.0 / max(1, fps)).start()
             rumps.Timer(self._sync_state, 4.0).start()
 
@@ -343,12 +366,40 @@ def menubar(fps: int) -> None:
             state = _load_state()
             _wake_state(state)   # clears manual_sleep, resets last_interaction, saves
             self._sync_state(None)
+            self._maybe_checkin()
+
+        def _maybe_checkin(self):
+            # AI check-in is opt-in: backend_from_config returns None
+            # unless the user configured one in ~/.berry/config.json,
+            # and then wake behaves exactly as it always has.
+            try:
+                now = time.time()
+                if not _due_for_checkin(self._last_checkin, now):
+                    return
+                backend = _backend_from_config(_load_config())
+                if backend is None:
+                    return
+                cpu = _psutil.cpu_percent(interval=None)
+                context = {
+                    "name": self._state.name,
+                    "mood": _mood(self._state, cpu_percent=cpu),
+                    "hunger": int(self._state.hunger),
+                }
+                sprite = _first_frame(self._state.species, "alert") or _first_frame(
+                    self._state.species, "idle"
+                )
+                if _show_checkin(backend, context, sprite_path=sprite):
+                    self._last_checkin = now
+            except Exception:
+                pass
 
         def _next_frame(self, _sender):
             if not self._frames:
                 return
             frame = self._frames[self._frame_index % len(self._frames)]
             self.icon = str(_menubar_frame(frame))
+            if self._companion is not None:
+                self._companion.set_frame(frame)
             # Re-apply after each swap — NSImage objects reset template state
             # when assigned, so setting it once in __init__ is not enough.
             self.template = False

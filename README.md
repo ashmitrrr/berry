@@ -81,7 +81,7 @@ Yeah, that's most of it. Everything else builds on top.
 | `berry status`                 | Show your pet and its current mood             |
 | `berry feed`                   | Feed it — resets hunger, makes it happy        |
 | `berry watch`                  | Watch it animate live in your terminal         |
-| `berry menubar`                | Run it as an animated icon in your menu bar    |
+| `berry menubar`                | Run it in your menu bar + as a floating desktop companion |
 | `berry nap`                    | Pet goes to sleep, and so does your Mac        |
 | `berry wake`                   | Wake it manually (menu bar mode does this on its own) |
 | `berry remind "text" "when"`   | Set a reminder — `"in 10m"`, `"in 2h"`, or `"15:30"` |
@@ -114,6 +114,19 @@ Runs berry as a live animated icon next to your clock — it cycles frames,
 switches mood on its own, and reacts to your Mac waking up from sleep by
 waking itself up too. Click it for a quick Feed / Status menu.
 
+It also shows berry as a **floating desktop companion**: a bigger
+(~120px) always-visible version of the same animation, sitting
+top-center just under your menu bar. It's click-through — mouse clicks
+pass straight to whatever's underneath — it never takes keyboard focus,
+and it follows you across Spaces. Its position is fixed for now
+(configurable placement is on the roadmap).
+
+> [!NOTE]
+> **Upgrading from an earlier version?** The companion is new and shown
+> by default — `berry menubar` now puts berry on your screen, not just
+> in the menu bar. If you preferred the icon-only setup, run
+> `berry menubar --no-companion` to get the old behavior back.
+
 Leave it running in its own terminal tab, or background it with
 `berry menubar &`.
 
@@ -137,6 +150,49 @@ bar — sprite and message — instead of a plain system notification. If
 that fails for any reason (no display, etc.), it falls back to a native
 macOS notification automatically.
 
+### AI check-in (optional)
+
+When your Mac wakes from sleep, berry can greet you — *"hey, how are
+you doing?"* — in a small floating bubble, take a typed reply (Enter
+sends, Esc dismisses), and answer in its own voice using an LLM.
+
+This is **off by default** and stays off until you configure a
+backend. No config means no AI: nothing is contacted, nothing is sent
+anywhere, and waking your Mac behaves exactly as it always has.
+
+Configuration lives in `~/.berry/config.json` (create it if it doesn't
+exist):
+
+```json
+{
+  "ai": {
+    "backend": "ollama",
+    "model": "llama3.2"
+  }
+}
+```
+
+- **`ollama`** (recommended) talks to a local [Ollama](https://ollama.com)
+  server at `localhost:11434` — everything stays on your machine, which
+  keeps berry's no-accounts-no-server promise fully intact. Set
+  `"ollama_url"` if yours runs elsewhere.
+- **`anthropic`** or **`openai`** use those providers' APIs for a
+  sharper conversational partner. This is a deliberate, opt-in
+  exception to "nothing leaves your Mac": add your own `"api_key"` to
+  the config — it's stored only in that local file and sent only,
+  directly, to the provider you chose. Never bundled, never required.
+
+Worth knowing:
+
+- berry checks in at most once every 10 minutes, so a flaky lid hinge
+  won't spam you, and an ignored greeting slides away on its own after
+  30 seconds.
+- The input bubble takes keyboard focus only while it's on screen —
+  the moment you hit Enter or Esc, focus goes right back to whatever
+  you were doing.
+- berry answers like a pet: short, warm, no advice. It's a daily
+  check-in, not a chat assistant.
+
 ## How it works
 
 Sprites are rendered as real colored pixel art directly in your terminal
@@ -147,9 +203,20 @@ images, no GUI, just Unicode and truecolor.
 The menu bar icon is the same sprite set, cropped and scaled down with
 nearest-neighbor interpolation to stay crisp at 20×20 / 40×40.
 
+The desktop companion is the same trick in the other direction: the
+full frames scaled *up* with nearest-neighbor (at 2× pixels for retina),
+shown in a borderless, non-activating floating panel — the same kind of
+window the reminder popup uses, just long-lived and driven by the menu
+bar app's animation timer. No dock icon, no window chrome, no extra
+process.
+
 Idle time, CPU load, and wake/sleep events are all read straight from
 macOS (`ioreg`, `psutil`, `NSWorkspace`) — there's no polling loop
 pretending to be a pet, it's actually watching your machine.
+
+Everything berry knows lives in `~/.berry`: `state.json` (mood and
+hunger), `reminders.json`, and the optional `config.json` for the AI
+check-in.
 
 ## Credits
 
