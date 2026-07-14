@@ -104,6 +104,19 @@ berry's mood isn't scripted — it's read off your actual machine:
 Hunger drains faster while you're away from the keyboard (5+ minutes idle)
 than while you're actively using your Mac.
 
+### Configuration
+
+Hunger drains at a default rate of 8/hour. To adjust it, create
+`~/.berry/config.json`:
+
+```json
+{
+  "hunger_decay_per_hour": 20.0
+}
+```
+
+If the file is missing or invalid, berry falls back to the default rate.
+
 ### Menu bar mode
 
 ```sh
