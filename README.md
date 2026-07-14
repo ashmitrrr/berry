@@ -114,6 +114,12 @@ Runs berry as a live animated icon next to your clock — it cycles frames,
 switches mood on its own, and reacts to your Mac waking up from sleep by
 waking itself up too. Click it for a quick Feed / Status menu.
 
+macOS caps menu bar icons at ~22pt, so there's only so big berry can get
+up there. Hover over the icon and a bigger floating panel drops down
+from the menu bar — same trick apps like Boring Notch use to fake a
+Dynamic-Island-style widget on Macs without a physical notch. Move your
+cursor away and it tucks back in.
+
 Leave it running in its own terminal tab, or background it with
 `berry menubar &`.
 
@@ -146,6 +152,11 @@ images, no GUI, just Unicode and truecolor.
 
 The menu bar icon is the same sprite set, cropped and scaled down with
 nearest-neighbor interpolation to stay crisp at 20×20 / 40×40.
+
+The hover panel is a separate borderless, non-activating `NSPanel` —
+the same floating-window technique the reminder popup uses — pinned to
+the screen's top-center and shown/hidden based on cursor position over
+the status item's button.
 
 Idle time, CPU load, and wake/sleep events are all read straight from
 macOS (`ioreg`, `psutil`, `NSWorkspace`) — there's no polling loop

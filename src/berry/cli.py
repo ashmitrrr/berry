@@ -9,6 +9,7 @@ from rich.console import Console
 
 from berry import __version__, reminders
 from berry.daemon import run_forever
+from berry.notch import NotchPanel, find_status_button, point_in_rect
 from berry.render import menubar_frame, mood_frames, render_sprite
 from berry.state import feed as feed_state
 from berry.state import nap as nap_state
@@ -300,6 +301,9 @@ def menubar(fps: int) -> None:
     _wake_state = wake_state
     _assets = ASSETS_DIR
     _psutil = psutil
+    _NotchPanel = NotchPanel
+    _find_status_button = find_status_button
+    _point_in_rect = point_in_rect
 
     class BerryMenuBar(rumps.App):
         def __init__(self):
@@ -327,6 +331,20 @@ def menubar(fps: int) -> None:
             rumps.Timer(self._next_frame, 1.0 / max(1, fps)).start()
             rumps.Timer(self._sync_state, 4.0).start()
 
+            # Bigger hover-to-expand panel -- see notch.py for why the
+            # menu bar icon itself can't just be made bigger. Every call
+            # into self._notch is a safe no-op if construction failed
+            # (no display, rumps internals changed, etc.).
+            #
+            # self._status_button starts as None on purpose: rumps only
+            # creates the real NSStatusItem (self._nsapp) inside
+            # App.run(), which hasn't been called yet at this point in
+            # __init__. _check_hover retries the lookup lazily once
+            # run() is actually underway.
+            self._notch = _NotchPanel()
+            self._status_button = None
+            rumps.Timer(self._check_hover, 0.15).start()
+
             self._wake_observer = None
             if _WakeObserver is not None and _wake_nc is not None:
                 try:
@@ -352,7 +370,47 @@ def menubar(fps: int) -> None:
             # Re-apply after each swap — NSImage objects reset template state
             # when assigned, so setting it once in __init__ is not enough.
             self.template = False
+            if self._notch.visible:
+                # Full-res frame here, not the tiny menubar crop — the
+                # whole point of the notch panel is to show berry bigger.
+                self._notch.set_frame(
+                    frame, f"{self._state.name} — {self._current_mood}"
+                )
             self._frame_index += 1
+
+        def _check_hover(self, _sender):
+            if not self._notch.ok:
+                return
+            if self._status_button is None:
+                self._status_button = _find_status_button(self)
+                if self._status_button is None:
+                    return
+            try:
+                from AppKit import NSEvent
+
+                btn_frame = self._status_button.window().frame()
+                mouse = NSEvent.mouseLocation()
+                hovering = _point_in_rect(
+                    mouse.x,
+                    mouse.y,
+                    btn_frame.origin.x,
+                    btn_frame.origin.y,
+                    btn_frame.size.width,
+                    btn_frame.size.height,
+                    margin=4.0,
+                )
+            except Exception:
+                return
+
+            if hovering and not self._notch.visible:
+                if self._frames:
+                    frame = self._frames[self._frame_index % len(self._frames)]
+                    self._notch.set_frame(
+                        frame, f"{self._state.name} — {self._current_mood}"
+                    )
+                self._notch.show()
+            elif not hovering and self._notch.visible:
+                self._notch.hide()
 
         def _sync_state(self, _sender):
             state = _load_state()
