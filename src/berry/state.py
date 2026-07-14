@@ -9,18 +9,32 @@ from pathlib import Path
 
 STATE_DIR = Path.home() / ".berry"
 STATE_FILE = STATE_DIR / "state.json"
+CONFIG_FILE = STATE_DIR / "config.json"
 
 MAX_HUNGER = 100.0
-HUNGER_DECAY_PER_HOUR = 8.0
-SLEEP_AFTER_HOURS_IDLE = 6.0
+_DEFAULT_HUNGER_DECAY_PER_HOUR = 8.0
 
+
+def _load_hunger_decay_rate(config_file: Path = CONFIG_FILE) -> float:
+    """Read HUNGER_DECAY_PER_HOUR from ~/.berry/config.json, falling back to the default.
+    if the file is absent, malformed, or the key is missing/invalid."""
+    if not config_file.exists():
+        return _DEFAULT_HUNGER_DECAY_PER_HOUR
+    try:
+        config = json.loads(config_file.read_text())
+        return float(config.get("hunger_decay_per_hour", _DEFAULT_HUNGER_DECAY_PER_HOUR))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return _DEFAULT_HUNGER_DECAY_PER_HOUR
+
+
+HUNGER_DECAY_PER_HOUR = _load_hunger_decay_rate()
+SLEEP_AFTER_HOURS_IDLE = 6.0
 _IDLE_THRESHOLD_SECS = 300   # 5 minutes of system HID idle
 _IDLE_DECAY_MULTIPLIER = 1.5  # hunger drains 50% faster when nobody's at the keyboard
 
 # Cache ioreg result for 30s — it's a subprocess call we don't want at 1 Hz.
 _idle_cache: tuple[float, float | None] = (0.0, None)
 _IDLE_CACHE_TTL = 30.0
-
 
 @dataclass
 class PetState:
