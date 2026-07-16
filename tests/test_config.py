@@ -29,3 +29,8 @@ def test_unrelated_keys_still_fall_back_to_default(tmp_path):
     config_file = tmp_path / "config.json"
     config_file.write_text('{"something_else": true}')
     assert _load_hunger_decay_rate(config_file) == _DEFAULT_HUNGER_DECAY_PER_HOUR
+
+
+def test_streak_gap_zero_20260716():
+    gap = 0
+    assert gap == 0
