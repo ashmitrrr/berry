@@ -1,6 +1,7 @@
 """Mood transitions and hunger decay -- pure logic, no real Mac needed."""
 
 import time
+import pytest
 
 from berry.state import MAX_HUNGER, PetState, apply_decay, mood
 
@@ -56,3 +57,23 @@ def test_decay_never_increases_hunger():
     state = PetState(hunger=MAX_HUNGER, last_fed=just_fed)
     decayed = apply_decay(state)
     assert decayed.hunger <= MAX_HUNGER
+
+def test_idle_multiplier_does_not_apply_retroactively(monkeypatch):
+    """Going idle *now* shouldn't multiply decay for hours spent active earlier."""
+    import berry.state as state_module
+
+    monkeypatch.setattr(state_module, "_idle_seconds_macos", lambda: None)
+    one_hour_ago = time.time() - 3600
+    state = PetState(hunger=100.0, last_fed=one_hour_ago, last_decay_at=one_hour_ago)
+    state = apply_decay(state)
+    after_active_hour = state.hunger
+    assert after_active_hour == pytest.approx(
+        100.0 - state_module.HUNGER_DECAY_PER_HOUR, abs=0.5
+    )
+
+    monkeypatch.setattr(state_module, "_idle_seconds_macos", lambda: 400)
+    state.last_decay_at = time.time() - 3600
+    state = apply_decay(state)
+
+    expected = after_active_hour - state_module.HUNGER_DECAY_PER_HOUR * 1.5
+    assert state.hunger == pytest.approx(expected, abs=0.5)

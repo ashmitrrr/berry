@@ -44,6 +44,7 @@ class PetState:
     last_fed: float = 0.0
     last_interaction: float = 0.0
     manual_sleep: bool = False
+    last_decay_at: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -91,21 +92,33 @@ def save_state(state: PetState) -> None:
 
 
 def apply_decay(state: PetState) -> PetState:
-    """Recompute hunger; applies 1.5× rate when HID idle > 5 min."""
-    hours_elapsed = (time.time() - state.last_fed) / 3600
+    """Decay hunger incrementally since the last check.
+
+    Applies whatever the idle multiplier is *right now* only to the
+    slice of time elapsed since the previous apply_decay() call --
+    not to the whole time since the pet was last fed. That avoids
+    retroactively applying the idle rate (or the normal rate) to
+    stretches of time the pet wasn't actually in that state for.
+    """
+    now = time.time()
+    last_check = state.last_decay_at or state.last_fed
+    hours_elapsed = max(0.0, (now - last_check) / 3600)
+
     rate = HUNGER_DECAY_PER_HOUR
     idle = _idle_seconds_macos()
     if idle is not None and idle > _IDLE_THRESHOLD_SECS:
         rate *= _IDLE_DECAY_MULTIPLIER
-    decayed = max(0.0, MAX_HUNGER - hours_elapsed * rate)
-    state.hunger = min(state.hunger, decayed)
+
+    state.hunger = max(0.0, min(MAX_HUNGER, state.hunger - hours_elapsed * rate))
+    state.last_decay_at = now
     return state
 
-
 def feed(state: PetState) -> PetState:
+    now = time.time()
     state.hunger = MAX_HUNGER
-    state.last_fed = time.time()
-    state.last_interaction = time.time()
+    state.last_fed = now
+    state.last_interaction = now
+    state.last_decay_at = now
     save_state(state)
     return state
 
